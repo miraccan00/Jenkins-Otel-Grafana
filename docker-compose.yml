@@ -1,0 +1,79 @@
+version: '3'
+
+services:
+  jenkins:
+    image: jenkins/jenkins:latest-jdk17
+    container_name: jenkins
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    environment:
+      - JENKINS_OPTS=--httpPort=8080
+    networks:
+      - otel-net
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    ports:
+      - "4317:4317"
+      - "55680:55680"
+      - "4318:4318"
+      - "8889:8889" # Prometheus exporter portu
+    volumes:
+      - ./otel-config.yaml:/otel-config.yaml
+    command: ["--config=/otel-config.yaml"]
+    networks:
+      - otel-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - otel-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - otel-net
+    depends_on:
+      - prometheus
+    restart: always
+
+  collector-script:
+    build:
+      context: .
+    container_name: collector-script
+    networks:
+      - otel-net
+    depends_on:
+      - otel-collector
+      - prometheus
+    restart: always
+
+  jaeger-all-in-one:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger-all-in-one
+    restart: always
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+    networks:
+      - otel-net
+
+networks:
+  otel-net:
+    driver: bridge
+
+volumes:
+  jenkins_home:
